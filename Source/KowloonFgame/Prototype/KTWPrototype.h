@@ -173,6 +173,7 @@ public:
  void RunContinuityTest();
  TWeakObjectPtr<ACharacter> FollowTarget;
  UFUNCTION(BlueprintCallable) void SetStreetView(bool On,bool FrameSelection=true);
+ void ShowMap();
  void PanTo(FVector Point);
  bool FrameSelection(bool Follow=false);
  FVector DesiredViewLocation()const;
@@ -211,6 +212,7 @@ class KOWLOONFGAME_API AKTWPrototypeHUD : public AHUD
  GENERATED_BODY()
 public: virtual void DrawHUD() override;
  UCanvas* GameCanvas() const{return Canvas;}
+ void GetTextSize(const FString& Text,float& Width,float& Height,UFont* Font=nullptr,float Scale=1.f)const;
  void DrawText(const FString& Text,FLinearColor Color,float X,float Y,UFont* Font=nullptr,float Scale=1.f,bool ScalePosition=false);
 };
 UCLASS()

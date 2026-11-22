@@ -2,7 +2,7 @@ param([string]$Release='BilingualUI_20261122')
 $ErrorActionPreference='Stop'
 $root=Split-Path $PSScriptRoot -Parent
 $exe=Join-Path $root "Releases\$Release\Windows\KowloonFgame\Binaries\Win64\KowloonFgame.exe"
-$archive=Join-Path $root 'SourceAssets\BilingualUI_20261122'
+$archive=Join-Path $root "SourceAssets\$Release"
 New-Item -ItemType Directory -Path $archive -Force > $null
 foreach($case in @('Profile','Chinese','English','Collection')){
  $log=Join-Path $root "Saved\Logs\BilingualUI${case}.log"
@@ -18,3 +18,4 @@ foreach($case in @('Profile','Chinese','English','Collection')){
  else{$picture=Join-Path $root "Releases\$Release\Windows\KowloonFgame\Saved\Screenshots\ModeSelect.png";if((Get-Item -LiteralPath $picture).LastWriteTime -lt $began){throw 'No fresh capture'};Copy-Item -LiteralPath $picture -Destination (Join-Path $archive "$case.png") -Force}
  Write-Output "PASS $case"
 }
+

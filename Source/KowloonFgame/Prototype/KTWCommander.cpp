@@ -59,7 +59,8 @@ void AKTWCommander::Recruit(int32 Lane,bool Emergency){
  for(int32 Try=0;Try<3;++Try)if(M->Purchase(Faction,RecruitRole,(Lane+Try)%3)){++Purchases;++RecruitmentTurn;break;}
 }
 bool AKTWCommander::Available(AKTWTestUnit* U,bool Emergency)const{
- if(!IsValid(U)||U->Health<=0||U->Faction!=Faction||AKTWStreetWar::Busy(U))return false;auto* C=U->FindComponentByClass<UKTWGoldCarrier>();if(!C||C->Carried>0||C->Task==EKTWGoldTask::PickingUp||C->Task==EKTWGoldTask::Delivering||C->Task==EKTWGoldTask::Healing)return false;
+ if(auto* War=AKTWStreetWar::Find(GetWorld()))if(U&&War->DiamondCarrier&&U->Order==EKTWUnitOrder::Escort&&U->CommandTarget()==War->DiamondCarrier)return false;
+ if(!IsValid(U)||U->Health<=0||U->Faction!=Faction||AKTWStreetWar::Busy(U)||(AKTWStreetWar::Find(GetWorld())&&(U->Order==EKTWUnitOrder::Attack||U->Order==EKTWUnitOrder::Retreat)))return false;auto* C=U->FindComponentByClass<UKTWGoldCarrier>();if(!C||C->Carried>0||C->Task==EKTWGoldTask::PickingUp||C->Task==EKTWGoldTask::Delivering||C->Task==EKTWGoldTask::Healing)return false;
  const double* Until=AssignedUntil.Find(U);auto* M=AKTWMatch::Find(GetWorld());return Emergency||!Until||!M||M->BattleSeconds>=*Until;
 }
 void AKTWCommander::Decide(bool AllowRecruit){

@@ -5,9 +5,9 @@
 #include "KTWRogue.generated.h"
 class UCapsuleComponent;class USphereComponent;class USkeletalMeshComponent;class UPrimitiveComponent;class AKTWPrototypeController;class AKTWPrototypeHUD;class AKTWCameraPawn;class AKTWRogueRun;
 struct FKTWRogueSoldier {FString Id,Name;int32 Visual=0,Cost=40;float HP=70,Mass=1,Speed=420,Range=130,Cooldown=.9f,Damage=12,Impulse=18000,Balance=12,Scale=1;bool Ranged=false;};
-struct FKTWRogueCard {FString Id,Name,Description;float Gravity=1,Knockback=1,Friction=.6f,EnemyMass=1,DeathRadius=0,DeathDamage=0,DeathImpulse=0,GrowthScale=1,GrowthMass=1,GrowthDamage=1,BounceDamage=1;int32 GrowthStacks=0,Bounces=0;bool FriendlySafe=false;};
+struct FKTWRogueCard {FString Id,Name,Description,NameCN,DescriptionCN;float Gravity=1,Knockback=1,Friction=.6f,EnemyMass=1,DeathRadius=0,DeathDamage=0,DeathImpulse=0,GrowthScale=1,GrowthMass=1,GrowthDamage=1,BounceDamage=1;int32 GrowthStacks=0,Bounces=0;bool FriendlySafe=false;float Health=1,Speed=1,Melee=1,Ranged=1,Haste=1,Range=1,Regen=0,Leech=0,Resistance=1,AllyMass=1,EnemySpeed=1;};
 struct FKTWRogueWave {FString Title,Formation;TArray<int32> Soldiers;};
-struct FKTWRogueRules {float Gravity=1,Knockback=1,Friction=.6f,EnemyMass=1,DeathRadius=0,DeathDamage=0,DeathImpulse=0,GrowthScale=1,GrowthMass=1,GrowthDamage=1,BounceDamage=1;int32 GrowthStacks=0,Bounces=0;bool FriendlySafe=false;};
+struct FKTWRogueRules {float Gravity=1,Knockback=1,Friction=.6f,EnemyMass=1,DeathRadius=0,DeathDamage=0,DeathImpulse=0,GrowthScale=1,GrowthMass=1,GrowthDamage=1,BounceDamage=1;int32 GrowthStacks=0,Bounces=0;bool FriendlySafe=false;float Health=1,Speed=1,Melee=1,Ranged=1,Haste=1,Range=1,Regen=0,Leech=0,Resistance=1,AllyMass=1,EnemySpeed=1;};
 UENUM() enum class EKTWRoguePhase:uint8 {Deployment,Battle,Result,Draft,Shop,Victory,GameOver};
 UCLASS() class KOWLOONFGAME_API AKTWRogueUnit:public APawn {
  GENERATED_BODY()
@@ -44,7 +44,7 @@ UCLASS() class KOWLOONFGAME_API AKTWRogueRun:public AActor {
 public:
  AKTWRogueRun();virtual void BeginPlay()override;virtual void Tick(float D)override;
  static AKTWRogueRun* Find(const UWorld* World);
- bool LoadData();void BuildArena();void Prepare();void StartBattle();void Complete(bool Victory);void Action(const FString& Id);void RebuildRules();void DraftRules();void RefreshShop(bool Paid);bool Buy(int32 Type);void Retry();void NextWave();bool Place(AKTWRogueUnit* Unit,FVector Point);void AutoDeploy();
+ bool LoadData();void BuildArena();void Prepare();void StartBattle();void Complete(bool Victory);void Action(const FString& Id);void RebuildRules();void DraftRules();bool RefreshRules();void RefreshShop(bool Paid);bool Buy(int32 Type);void Retry();void NextWave();bool Place(AKTWRogueUnit* Unit,FVector Point);void AutoDeploy();
  void CommandSelected(FVector Point,AKTWRogueUnit* Enemy=nullptr);
  TArray<FVector> EnemyFormation(int32 WaveIndex)const;int32 EnemyBudget(int32 WaveIndex)const;
  bool PlaceSquad(const TArray<AKTWRogueUnit*>& Squad,const TArray<FVector>& Goals);
@@ -59,6 +59,7 @@ public:
  TArray<int32> Roster,ActiveCards,Choices,Shop;TArray<FVector> Positions;TArray<TWeakObjectPtr<AKTWRogueUnit>> Selected;TArray<FKTWRogueButton> Buttons;
  FKTWRogueDeath DeathEvent;FKTWRogueKill KillEvent;
  EKTWRoguePhase Phase=EKTWRoguePhase::Deployment;int32 Wave=0,Lives=3,Coins=200;float Elapsed=0,Speed=1,CameraDistance=4600,CameraYaw=-90,CameraPitch=-58;FVector CameraFocus=FVector::ZeroVector;
+ UPROPERTY() bool FreeRuleRefresh=true;
  bool ConfigOK=false,Won=false,Selecting=false;FVector2D SelectionStart;FString Notice;FRandomStream Random;
  float WorstLiveTilt=0;int32 WalkingSamples=0,AttackSamples=0,GunnerShots=0;
  int32 StartingCoins=200,StartingLives=3,MaxRoster=20,BaseReward=180,WaveReward=40,SurvivorReward=15,RefreshCost=20,ProjectileLimit=150;float CollapseAt=45,Deadline=65,VelocityLimit=4500,ScaleLimit=2.5f,DifficultyScale=1;

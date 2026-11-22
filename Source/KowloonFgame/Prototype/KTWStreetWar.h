@@ -44,6 +44,7 @@ USTRUCT() struct FKTWFieldTask {
  GENERATED_BODY()
  UPROPERTY() TObjectPtr<AKTWFieldObject> Target;
  float Progress=0,HealthAtStart=0;
+ float ClosestDistance=MAX_flt,ApproachIdle=0,InsideSeconds=0;
  bool Inside=false;
 };
 UCLASS() class KOWLOONFGAME_API AKTWStreetWar:public AActor {
@@ -56,7 +57,7 @@ public:
  static bool Enabled(const UWorld* W);
  static float Limit(const UWorld* W);
  static float DamageScale(const AActor* Source);
- void RunEngagementTests();
+ void RunEngagementTests();void RunTacticsTests();
  void RunOrdersLootTests();
  static bool Visible(const UWorld* W,const AActor* A,int32 Team=0);
  static bool Busy(const AKTWTestUnit* U);
@@ -67,6 +68,7 @@ public:
  void Draw(AKTWHoloHUD* H);
  void BossDown(int32 Team);
  void Resolve();
+ void DecideField();
  void SpawnConvoy(int32 Index);
  void Initialize();
  AKTWGoldPile* AddGold(FVector P,int32 Amount);

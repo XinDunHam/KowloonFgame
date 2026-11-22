@@ -1,6 +1,7 @@
 #include "KTWPrototype.h"
 #include "KTWGeneration.h"
 #include "KTWSession.h"
+#include "KTWReferenceUI.h"
 #include "Camera/CameraComponent.h"
 #include "Camera/PlayerCameraManager.h"
 #include "Components/SkeletalMeshComponent.h"
@@ -82,7 +83,7 @@ bool AKTWCameraPawn::UpdateLookGesture(float D)
  if(!bStreetView){SetLookCaptured(false);bRightPending=false;return false;}
  if(PC->WasInputKeyJustPressed(EKeys::RightMouseButton)){
   float X=0,Y=0;int32 W=0,H=0;PC->GetViewportSize(W,H);
-  if(PC->GetMousePosition(X,Y)&&Y>125&&X<W-280&&!(X<335&&Y<450)&&Y<H-85){bRightPending=true;bRightDragged=false;RightPressedAt=GetWorld()->GetTimeSeconds();RightPress=FVector2D(X,Y);}
+  if(PC->GetMousePosition(X,Y)&&KTWReferenceUI::WorldCursor(W,H,FVector2D(X,Y),false,false,true)){bRightPending=true;bRightDragged=false;RightPressedAt=GetWorld()->GetTimeSeconds();RightPress=FVector2D(X,Y);}
  }
  if(bRightPending&&PC->IsInputKeyDown(EKeys::RightMouseButton)&&!bRightDragged){
   float X=0,Y=0;PC->GetMousePosition(X,Y);

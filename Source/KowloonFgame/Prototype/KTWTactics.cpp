@@ -38,7 +38,7 @@ void FKTWTactics::Move(ACharacter* U,FVector P,int32 Faction,float Acceptance,bo
  if(FVector::Dist2D(U->GetActorLocation(),P)<=Acceptance){AI->StopMovement();return;}
  if(auto* Guard=U->FindComponentByClass<UKTWWorkGuard>()){if(Immediate)Guard->CancelRecovery();else if(Guard->IsDetouring())return;}
  if(!Immediate){auto* PF=AI->GetPathFollowingComponent();auto Path=PF?PF->GetPath():nullptr;if(Path.IsValid()&&PF->GetStatus()==EPathFollowingStatus::Moving&&FVector::Dist2D(Path->GetEndLocation(),P)<60)return;}
- AI->MoveToLocation(P,Acceptance,false,true,true,false,Filter(Faction),false);
+ auto* Guard=U->FindComponentByClass<UKTWWorkGuard>();if(Guard&&!Guard->RequestPath(P,Immediate))return;const auto Result=AI->MoveToLocation(P,Acceptance,false,true,true,false,Filter(Faction),false);if(Guard)Guard->PathFailed(Result==EPathFollowingRequestResult::Failed);
 }
 FVector FKTWTactics::EscortPoint(const ACharacter* Escort,const ACharacter* Target,float Distance){
  if(!Escort||!Target)return FVector::ZeroVector;

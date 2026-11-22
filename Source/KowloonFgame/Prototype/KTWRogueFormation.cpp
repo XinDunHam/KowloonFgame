@@ -9,6 +9,7 @@ TArray<FVector> AKTWRogueRun::EnemyFormation(int32 WaveIndex)const{
  TArray<FVector> Result;if(!Waves.IsValidIndex(WaveIndex))return Result;
  const auto* Session=UKTWSession::Get(this);
  FRandomStream Layout(int32(HashCombineFast(uint32(Session?Session->RoundSeed:5990),uint32(WaveIndex+1)*7919u)));
+ if(WaveIndex>=4){for(int I=0;I<Waves[WaveIndex].Soldiers.Num();++I){const int Row=I%6,Column=I/6;FVector P(480+Column*360,(Row-2.5f)*230,0);P.X+=Layout.FRandRange(-12,12);P.Y+=Layout.FRandRange(-12,12);Result.Add(P);}return Result;}
  int FrontCount=0,PipeCount=0;for(int TypeIndex:Waves[WaveIndex].Soldiers){const auto& Soldier=SoldierTypes[TypeIndex];FrontCount+=!Soldier.Ranged&&Soldier.Visual!=4;PipeCount+=Soldier.Visual==2;}
  int Front=0,Ranged=0,Pipes=0,Flank=0;
  for(int32 TypeIndex:Waves[WaveIndex].Soldiers){

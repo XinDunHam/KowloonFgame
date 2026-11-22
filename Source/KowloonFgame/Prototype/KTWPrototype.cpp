@@ -4,6 +4,7 @@
 #include "KTWSession.h"
 #include "KTWWorkGuard.h"
 #include "KTWHoloHUD.h"
+#include "KTWReferenceUI.h"
 #include "KTWDynamics.h"
 #include "KTWPresentation.h"
 #include "KTWTactics.h"
@@ -143,7 +144,7 @@ bool AKTWTestUnit::CombatStep(){
  AActor* Target=Enemy.Get();
  if(Order==EKTWUnitOrder::Attack&&Valid(OrderTarget.Get()))Target=OrderTarget.Get();
  if(!Valid(Target)||FVector::Dist2D(GetActorLocation(),Target->GetActorLocation())>1700||!Visible(Target))Target=nullptr;
- if(!Target){float Best=1400;for(TActorIterator<ACharacter>I(GetWorld());I;++I){if(!Valid(*I))continue;float D=FVector::Dist2D(GetActorLocation(),I->GetActorLocation());if(D<Best&&Visible(*I)){Best=D;Target=*I;}}
+ if(!Target){float Best=1400;for(TActorIterator<ACharacter>I(GetWorld());I;++I){if(!Valid(*I))continue;float D=FVector::Dist2D(GetActorLocation(),I->GetActorLocation());float Score=D;if(auto* E=Cast<AKTWTestUnit>(*I)){if(E->UnitRole==EKTWRole::Thrower&&UnitRole==EKTWRole::Knife)Score-=180;Score-=100*(1-FMath::Clamp(E->Health/E->Stats.MaxHealth,0.f,1.f));}if(D<1400&&Score<Best&&Visible(*I)){Best=Score;Target=*I;}}
   if(Target)CombatAnchor=GetActorLocation();
  }
  if(!Target){GetCharacterMovement()->SetAvoidanceEnabled(true);Enemy.Reset();return false;}
@@ -153,11 +154,11 @@ bool AKTWTestUnit::CombatStep(){
  GetCharacterMovement()->SetAvoidanceEnabled(UnitRole==EKTWRole::Thrower||bRunner);
  if(Enemy.Get()!=Target)PipeHits=0;Enemy=Target;const float D=FVector::Dist2D(GetActorLocation(),Target->GetActorLocation());
  if(D>220&&D<=1100&&Now-LastAttack>=Stats.Interval)if(auto* A=FindComponentByClass<UKTWCombatAction>())if(A->ThrowConsumable(Target)){LastAttack=Now;AI->StopMovement();return true;}
- if(bRunner&&Order!=EKTWUnitOrder::Attack&&D>190){AI->MoveToLocation(AKTWStreetDirector::BasePosition(Faction),100,true,true,true,false,FKTWTactics::Filter(Faction),false);return true;}
- if(D>Stats.Range){AI->MoveToActor(Target,FMath::Max(10.f,Stats.Range-110),false,true,false,FKTWTactics::Filter(Faction),false);return true;}
+ if(bRunner&&Order!=EKTWUnitOrder::Attack&&D>190){FKTWTactics::Move(this,AKTWStreetDirector::BasePosition(Faction),Faction,100);return true;}
+ if(D>Stats.Range){const FVector Radial=(GetActorLocation()-Target->GetActorLocation()).GetSafeNormal2D();const FVector Approach=Target->GetActorLocation()+Radial*FMath::Max(70.f,Stats.Range*.65f);FKTWTactics::Move(this,AKTWStreetDirector::IsRoadPosition(Approach,-40)?Approach:Target->GetActorLocation(),Faction,35);return true;}
  bool Kiting=false;
- if(UnitRole==EKTWRole::Thrower&&D<700){const FVector Away=(GetActorLocation()-Target->GetActorLocation()).GetSafeNormal2D();auto* NS=FNavigationSystem::GetCurrent<UNavigationSystemV1>(GetWorld());FNavLocation N;const FVector P=GetActorLocation()+Away*350;if(NS&&AKTWStreetDirector::IsRoadPosition(P,-100)&&!FKTWTactics::Protected(P,1-Faction)&&NS->ProjectPointToNavigation(P,N,FVector(80,80,200))){AI->MoveToLocation(N.Location,30,false,true,true,false,FKTWTactics::Filter(Faction),false);Kiting=true;}}
- if(!Kiting){if(UnitRole==EKTWRole::Knife)AI->MoveToActor(Target,5,false,true,false,FKTWTactics::Filter(Faction),false);else AI->StopMovement();}if(Now-LastAttack<Stats.Interval)return true;float Counter=1;
+ if(UnitRole==EKTWRole::Thrower&&D<700){const FVector Away=(GetActorLocation()-Target->GetActorLocation()).GetSafeNormal2D();auto* NS=FNavigationSystem::GetCurrent<UNavigationSystemV1>(GetWorld());FNavLocation N;const FVector P=GetActorLocation()+Away*350;if(NS&&AKTWStreetDirector::IsRoadPosition(P,-100)&&!FKTWTactics::Protected(P,1-Faction)&&NS->ProjectPointToNavigation(P,N,FVector(80,80,200))){FKTWTactics::Move(this,N.Location,Faction,30);Kiting=true;}}
+ if(!Kiting){AI->StopMovement();}if(Now-LastAttack<Stats.Interval)return true;float Counter=1;
  if(auto* U=Cast<AKTWTestUnit>(Target)){
   if((UnitRole==EKTWRole::Knife&&U->UnitRole==EKTWRole::Thrower)||(UnitRole==EKTWRole::Pipe&&U->UnitRole==EKTWRole::Knife)||(UnitRole==EKTWRole::Thrower&&U->UnitRole==EKTWRole::Pipe))Counter=1.3f;
   if(UnitRole==EKTWRole::Knife&&U->UnitRole==EKTWRole::Pipe)Counter=.85f;
@@ -301,32 +302,21 @@ void AKTWBoss::UpdateLogic() {
 }
 AKTWPrototypeController::AKTWPrototypeController(){bShowMouseCursor=true;bEnableClickEvents=true;bShouldPerformFullTickWhenPaused=true;PrimaryActorTick.bTickEvenWhenPaused=true;}
 bool AKTWPrototypeController::SelectLaneKey(FKey Key){auto* M=AKTWMatch::Find(GetWorld());if(!M||M->Phase==EKTWMatchPhase::Finished||UGameplayStatics::IsGamePaused(GetWorld()))return false;int32 L=Key==EKeys::Z?0:Key==EKeys::X?1:Key==EKeys::C?2:-1;if(L<0)return false;M->SelectedLane=L;M->Feedback=FString::Printf(TEXT("Recruit lane: %s. New units march through this lane before automatic tasks."),L==0?TEXT("UPPER"):L==1?TEXT("MIDDLE"):TEXT("LOWER"));return true;}
-bool AKTWPrototypeController::HandleRecruitClick(float X,float Y,int32 Width,int32 Height){
- if(auto* H=Cast<AKTWHoloHUD>(GetHUD()))if(H->HandleHudClick(X,Y))return true;
- auto* M=AKTWMatch::Find(GetWorld());if(!M)return false;
- if(X>=12&&X<=332&&Y>=Height-160&&Y<Height-108){M->OpenBox(0,M->SelectedLane);return true;}
- if(X<Width-266||X>Width-16)return false;const float V=130+(Y-130)/RecruitScale(Height);
- if(V>=135&&V<175){const int32 L=FMath::Clamp(int32((X-(Width-270))/85),0,2);SelectLaneKey(L==0?EKeys::Z:L==1?EKeys::X:EKeys::C);return true;}
- for(int32 Row=0;Row<7;++Row){const float Top=175+Row*50;if(V<Top||V>=Top+46)continue;
-  if(Row<4)M->Purchase(0,EKTWRole(Row),M->SelectedLane);
-  else if(Row==4)M->OpenBox(0,M->SelectedLane);else if(Row==5)M->StartBattle();else{for(AKTWTestUnit* U:SelectedUnits)if(IsValid(U))M->Refund(U);SelectedUnits.Empty();SelectedUnit=nullptr;}return true;
- }return false;
-}
+bool AKTWPrototypeController::HandleRecruitClick(float X,float Y,int32 Width,int32 Height){if(auto* H=Cast<AKTWHoloHUD>(GetHUD()))return H->HandleHudClick(X,Y);return false;}
 void AKTWPrototypeController::PlayerTick(float D) {
  Super::PlayerTick(D);
  if(auto* S=UKTWSession::Get(this))if(S->Handle(this)){if(auto* Rogue=AKTWRogueRun::Find(GetWorld()))Rogue->Selecting=false;if(auto* Cam=Cast<AKTWCameraPawn>(GetPawn())){Cam->SetLookCaptured(false);Cam->bRightPending=false;}bSelecting=false;return;}
  if(auto* Rogue=AKTWRogueRun::Find(GetWorld())){Rogue->Handle(this);return;}
+ auto* Match=AKTWMatch::Find(GetWorld());if(Match&&!UGameplayStatics::IsGamePaused(GetWorld()))for(const FKey K:{EKeys::Z,EKeys::X,EKeys::C})if(WasInputKeyJustPressed(K))SelectLaneKey(K);
  auto* StreetCamera=Cast<AKTWCameraPawn>(GetPawn());
  const bool StreetCommand=StreetCamera?StreetCamera->UpdateLookGesture(D):false;
  if(StreetCamera&&(StreetCamera->bLookCaptured||StreetCamera->bRightPending)){bSelecting=false;return;}
- auto* Match=AKTWMatch::Find(GetWorld());
  if(Match){
   if(WasInputKeyJustPressed(EKeys::P))UGameplayStatics::SetGamePaused(GetWorld(),!UGameplayStatics::IsGamePaused(GetWorld()));
   if(WasInputKeyJustPressed(EKeys::N)){UGameplayStatics::SetGamePaused(GetWorld(),false);UGameplayStatics::OpenLevel(GetWorld(),FName(TEXT("/Game/KTW/Maps/L_Kowloon_ReferenceV4")));return;}
   if(UGameplayStatics::IsGamePaused(GetWorld()))return;
   if(WasInputKeyJustPressed(EKeys::SpaceBar))Match->StartBattle();
   if(WasInputKeyJustPressed(EKeys::Six))Match->OpenBox(0,Match->SelectedLane);
-  for(const FKey K:{EKeys::Z,EKeys::X,EKeys::C})if(WasInputKeyJustPressed(K))SelectLaneKey(K);
   const FKey BuyKeys[]={EKeys::Two,EKeys::Three,EKeys::Four,EKeys::Five};for(int32 I=0;I<4;++I)if(WasInputKeyJustPressed(BuyKeys[I]))Match->Purchase(0,EKTWRole(I),Match->SelectedLane);
   if(WasInputKeyJustPressed(EKeys::BackSpace)){for(AKTWTestUnit* U:SelectedUnits)if(IsValid(U))Match->Refund(U);SelectedUnits.Empty();SelectedUnit=nullptr;}
   if(WasInputKeyJustPressed(EKeys::LeftMouseButton)){float X,Y;GetMousePosition(X,Y);int32 SX,SY;GetViewportSize(SX,SY);if(HandleRecruitClick(X,Y,SX,SY))bUIConsumed=true;}
@@ -341,7 +331,7 @@ void AKTWPrototypeController::PlayerTick(float D) {
   bSelecting=false;float X,Y;if(GetMousePosition(X,Y)&&IsWorldCursor(FVector2D(X,Y))){const bool Add=IsInputKeyDown(EKeys::LeftShift)||IsInputKeyDown(EKeys::RightShift);const bool ForceGround=bRightSelecting&&(IsInputKeyDown(EKeys::LeftAlt)||IsInputKeyDown(EKeys::RightAlt))&&FVector2D::Distance(SelectionStart,FVector2D(X,Y))<=12;TacticalCommand=ForceGround||(!SelectAtScreen(SelectionStart,FVector2D(X,Y),Add,bRightSelecting)&&bRightSelecting);}
  }
  if(Tactical?TacticalCommand:StreetCommand){
-  float MX,MY;GetMousePosition(MX,MY);int32 SX,SY;GetViewportSize(SX,SY);if(MY<120||(MX>=SX-270&&MY>=130&&MY<640))return;
+  float MX,MY;GetMousePosition(MX,MY);int32 SX,SY;GetViewportSize(SX,SY);if(!IsWorldCursor(FVector2D(MX,MY)))return;
   FVector Ground=FVector::ZeroVector;const bool HasGround=GroundAtCursor(Ground);
   AActor* Context=nullptr;const bool GroundOnly=IsInputKeyDown(EKeys::LeftAlt)||IsInputKeyDown(EKeys::RightAlt);
   if(!GroundOnly){Context=PickCharacterAt(FVector2D(MX,MY));float Best=18;
@@ -370,7 +360,7 @@ void AKTWPrototypeController::PlayerTick(float D) {
  if(!Match&&WasInputKeyJustPressed(EKeys::J)&&SelectedBoss)SelectedBoss->ApplyTestDamage(260);
  if(!Match&&WasInputKeyJustPressed(EKeys::R))for(TActorIterator<AKTWStreetDirector>I(GetWorld());I;++I)I->NextSeed();
 }
-bool AKTWPrototypeController::IsWorldCursor(FVector2D P)const{int32 W=0,H=0;GetViewportSize(W,H);return P.Y>125&&P.Y<H-85&&P.X<W-280&&P.X>=0&&!(P.X<335&&P.Y<450);}
+bool AKTWPrototypeController::IsWorldCursor(FVector2D P)const{int32 W=0,H=0;GetViewportSize(W,H);auto* Cam=Cast<AKTWCameraPawn>(GetPawn());return KTWReferenceUI::WorldCursor(W,H,P,false,false,Cam&&Cam->bStreetView);}
 bool AKTWPrototypeController::SelectAtScreen(FVector2D Start,FVector2D End,bool Add,bool OnlyFriendlyClick){
  const bool Drag=FVector2D::Distance(Start,End)>12;ACharacter* Picked=Drag?nullptr:PickCharacterAt(End);
  auto Friendly=[](const ACharacter* C){if(auto* U=Cast<AKTWTestUnit>(C))return U->Faction==0&&U->Health>0;if(auto* B=Cast<AKTWBoss>(C))return B->Faction==0&&!B->bRecovering;return false;};

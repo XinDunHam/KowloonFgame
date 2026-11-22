@@ -46,7 +46,7 @@ public:
  bool Draw(AKTWPrototypeHUD* HUD);
  void DrawOverlay(AKTWPrototypeHUD* HUD);
  void Action(const FString& Id);
- void NewRound(bool Menu=false);
+ void NewRound(bool Menu=false);void DrawGuide(class AKTWPrototypeHUD* H);
  bool Ready()const;
  void Play(FName Cue,float Volume=1,FVector Point=FVector::ZeroVector);
  static void Cue(const UObject* Context,FName Name,float Volume=1,FVector Point=FVector::ZeroVector);

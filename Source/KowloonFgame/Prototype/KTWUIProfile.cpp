@@ -1,4 +1,7 @@
 #include "KTWSession.h"
+#include "KTWExactUI.h"
+#include "KTWReferenceUI.h"
+#include "KTWSharpText.h"
 #include "KTWPrototype.h"
 #include "Misc/FileHelper.h"
 #include "Serialization/JsonSerializer.h"
@@ -18,13 +21,11 @@ void UKTWSession::SaveProfile(){
  auto Data=MakeShared<FJsonObject>();Data->SetBoolField(TEXT("english"),English);TArray<FString> Sorted=Achievements.Array();Sorted.Sort();TArray<TSharedPtr<FJsonValue>> Items;for(const auto& Id:Sorted)Items.Add(MakeShared<FJsonValueString>(Id));Data->SetArrayField(TEXT("achievements"),Items);FString Text;FJsonSerializer::Serialize(Data,TJsonWriterFactory<>::Create(&Text));const FString File=ProfileOverride.IsEmpty()?FPaths::ProjectSavedDir()/TEXT("PlayerProfile.json"):ProfileOverride;IFileManager::Get().MakeDirectory(*FPaths::GetPath(File),true);const FString Temp=File+TEXT(".tmp");if(FFileHelper::SaveStringToFile(Text,*Temp,FFileHelper::EEncodingOptions::ForceUTF8WithoutBOM))IFileManager::Get().Move(*File,*Temp,true,true);
 }
 void UKTWSession::Earn(const FString& Id){if(FString(FCommandLine::Get()).Contains(TEXT("-KTW"))&&ProfileOverride.IsEmpty())return;if(!Achievements.Contains(Id)){Achievements.Add(Id);SaveProfile();}}
-void AKTWPrototypeHUD::DrawText(const FString& Text,FLinearColor Color,float X,float Y,UFont* Font,float Scale,bool ScalePosition){auto* Session=UKTWSession::Get(this);AHUD::DrawText(Session?Session->Localize(Text):Text,Color,X,Y,Font,FMath::Max(Scale*1.12f,.82f),ScalePosition);}
+void AKTWPrototypeHUD::GetTextSize(const FString& Text,float& Width,float& Height,UFont* Font,float Scale)const{auto* S=UKTWSession::Get(this);auto Size=KTWSharpText::Measure(S?S->Localize(Text):Text,FMath::Max(Scale*18.f,14.f));Width=Size.X;Height=Size.Y;}
+void AKTWPrototypeHUD::DrawText(const FString& Text,FLinearColor Color,float X,float Y,UFont* Font,float Scale,bool ScalePosition){auto* Session=UKTWSession::Get(this);KTWSharpText::Draw(this,Session?Session->Localize(Text):Text,X,Y,FMath::Max(Scale*18.f,14.f),Color);}
 void UKTWSession::Paper(AKTWPrototypeHUD* H,float X,float Y,float W,float Height,bool Light){
- const FLinearColor Ink(.024f,.023f,.022f,.98f),Gold(.52f,.44f,.31f,.75f),PaperColor(.76f,.73f,.66f,.98f);
- H->DrawRect(FLinearColor(0,0,0,.45f),X+3,Y+4,W,Height);H->DrawRect(Light?PaperColor:Ink,X,Y,W,Height);
- if(Light){for(int I=0;I<48;++I){const float PX=X+I*W/48,Edge=1+(I*13%4);H->DrawRect(PaperColor,PX,Y-Edge,W/48+1,Edge);H->DrawRect(PaperColor,PX,Y+Height-1,W/48+1,Edge);}}
- else{H->DrawLine(X+8,Y,X+W-8,Y,Gold,1);H->DrawLine(X+8,Y+Height,X+W-8,Y+Height,Gold,1);}
- H->DrawRect(FLinearColor(.58f,.10f,.075f),X+5,Y+5,4,4);
+ if(Height<80){KTWReferenceUI::MenuButton(H,X,Y,W,Height,Light);return;}
+ KTWExactUI::Panel(H,X,Y,W,Height);if(Light)H->DrawRect(FLinearColor(.64f,.79f,.82f,.96f),X+3,Y+3,W-6,Height-6);H->DrawLine(X+7,Y+Height,X+W-14,Y+Height,FLinearColor(.03f,.88f,.91f),2);H->DrawLine(X+W-14,Y+Height,X+W,Y+Height-14,FLinearColor(.03f,.88f,.91f),2);
 }
 FString UKTWSession::Localize(FString Text)const{
  static const TArray<TPair<FString,FString>> Catalog={
@@ -101,6 +102,7 @@ FString UKTWSession::Localize(FString Text)const{
  {TEXT("Allied kills: size +20%, mass and damage +25%. Up to 4 stacks."),TEXT("己方击杀后体型增加20%，质量与伤害增加25%，最多4层。")},
  {TEXT("Enemy mass x0.45. Break the heavyweight formation."),TEXT("敌军质量变为45%，更容易击退。")},
  {TEXT("Your explosions and projectiles cannot hurt allies."),TEXT("己方爆炸和投射物不会伤害友军。")},
+ {TEXT("重装封锁"),TEXT("Armored blockade")},{TEXT("交叉火网"),TEXT("Crossfire")},{TEXT("天台决战"),TEXT("Rooftop showdown")},
  {TEXT("MOON GRAVITY"),TEXT("月球重力")},
  {TEXT("DOUBLE IMPACT"),TEXT("双倍冲击")},
  {TEXT("ICE STREETS"),TEXT("冰面街区")},
@@ -114,7 +116,7 @@ FString UKTWSession::Localize(FString Text)const{
  {TEXT("Recruit, select your units and RMB to deploy. SPACE starts the wave."),TEXT("先招募兵种，再选中单位调整位置，空格开战。")},
  {TEXT("Recruited permanently for this run. Fallen units return next wave."),TEXT("已加入本局阵容，阵亡单位下一关会满血返回。")},
  {TEXT("Victory. Choose a rule, recruit and prepare for the next wave."),TEXT("本关胜利！选择法则、补充兵力后进入下一关。")},
- {TEXT("All five waves cleared. Your gang owns the rooftop."),TEXT("五关全部通过！你的帮派占领了天台。")},
+ {TEXT("All seven waves cleared. Your gang owns the rooftop."),TEXT("七关全部通过！你的帮派占领了天台。")},
  {TEXT("One legion life lost. Your roster and rules are kept for a retry."),TEXT("失去一次军团生命，保留阵容和法则，可重新布阵挑战。")},
  {TEXT("Legion lives exhausted. Start a fresh rule run."),TEXT("军团生命耗尽，可重新开始挑战。")},
  {TEXT("左键选中己方单位，再点蓝方地面调整位置；Shift追加。空格开战。"),TEXT("Select an ally, then click blue ground to deploy. SHIFT adds. SPACE starts.")},
@@ -128,9 +130,9 @@ FString UKTWSession::Localize(FString Text)const{
  {TEXT("已选中 "),TEXT("Selected ")},
  {TEXT(" 人 / "),TEXT(" units / ")},
  {TEXT("COLLECTION"),TEXT("成就收藏")},
- {TEXT("Start with 3 chargers, 200 gold and 3 lives.\nRecruit more soldiers before the first battle.\nLMB or RMB selects allies; RMB drag: squads.\nLMB blue floor places selected soldiers.\nKeep space between bodies when deploying.\nSPACE starts the wave. Enemies are visible.\nFive waves: wave 3 elite / wave 5 boss."),TEXT("初始3名跑腿兵、200金币、3次生命。\n战前购买兵种：跑腿、刀兵、铁棍、投掷、枪手。\n左键选中单位，再点蓝方地面调整位置。\n右键拖框多选，Shift追加。\n空格开战，战前可观察全部敌军。\n共五关，第三关安保精英，第五关最终老大。")},
- {TEXT("Soldiers walk upright, strike and shoot.\nHeavy units resist knockback. Falling is fatal.\nAfter a victory choose 1 of 3 physics laws.\nGravity, ice and knockback affect BOTH teams.\nCombine laws with your roster and formation.\nRMB can move units or focus a chosen enemy.\nMiddle drag orbits, wheel zooms, HOME resets.\nTAB changes speed. ESC pauses.\n45s collapse / 65s surviving-strength judgement."),TEXT("角色正常行走、挥击、投掷和射击。\n重型单位抵抗击退，掉出天台会淘汰。\n每次胜利从三条法则中选择一条。\n重力、冰面和击退法则同时影响双方。\n右键地面移动，右键敌人集火。\n中键旋转、滚轮缩放、Home复位。\nTab变速，ESC暂停。45秒收缩，65秒裁决。")},
- {TEXT("A purchased soldier stays for this run.\nDead soldiers return at full health next wave.\nLosing costs one life; retry the same wave.\nThree lost lives ends the run.\nWinning grants gold and a new law, then shop.\nRefresh costs 20 gold. Army limit: 20.\nClear wave 5 to win. N begins a fresh run.\nReturn to main menu to select STREET WAR."),TEXT("购买单位本局持续保留，下一关满血返回。\n失败扣一次生命，可调整站位后重试同一关。\n三次生命耗尽则本局结束。\n胜利获得金币和法则，再进入招募商店。\n刷新花费20金币，阵容最多20人。\n通过第五关获胜，N开始新一局。\n返回主菜单可切换街区争夺模式。")},
+ {TEXT("Start with 3 chargers, 200 gold and 3 lives.\nRecruit more soldiers before the first battle.\nLMB or RMB selects allies; RMB drag: squads.\nLMB blue floor places selected soldiers.\nKeep space between bodies when deploying.\nSPACE starts the wave. Enemies are visible.\nSeven waves: wave 3 elite / wave 7 finale."),TEXT("初始3名跑腿兵、200金币、3次生命。\n战前购买兵种：跑腿、刀兵、铁棍、投掷、枪手。\n左键选中单位，再点蓝方地面调整位置。\n右键拖框多选，Shift追加。\n空格开战，战前可观察全部敌军。\n共七关，第三关安保精英，第七关最终决战。")},
+ {TEXT("Soldiers walk upright, strike and shoot.\nHeavy units resist knockback. Falling is fatal.\n24 laws: choose 1 of 3 after a victory.\nRefresh each law offer once for free.\nGravity, ice and knockback affect BOTH teams.\nCombine laws with your roster and formation.\nRMB can move units or focus a chosen enemy.\nMiddle drag orbits, wheel zooms, HOME resets.\nTAB changes speed. ESC pauses.\n45s collapse / 65s surviving-strength judgement."),TEXT("角色正常行走、挥击、投掷和射击。\n重型单位抵抗击退，掉出天台会淘汰。\n24种法则，每次胜利三选一。\n每次法则候选可免费刷新一次。\n重力、冰面和击退法则同时影响双方。\n右键地面移动，右键敌人集火。\n中键旋转、滚轮缩放、Home复位。\nTab变速，ESC暂停。45秒收缩，65秒裁决。")},
+ {TEXT("A purchased soldier stays for this run.\nDead soldiers return at full health next wave.\nLosing costs one life; retry the same wave.\nThree lost lives ends the run.\nWinning grants gold and a new law, then shop.\nShop refresh: 20 gold. Army limit: 20.\nClear wave 7 to win. N begins a fresh run.\nReturn to main menu to select STREET WAR."),TEXT("购买单位本局持续保留，下一关满血返回。\n失败扣一次生命，可调整站位后重试同一关。\n三次生命耗尽则本局结束。\n胜利获得金币和法则，再进入招募商店。\n商店刷新花费20金币，阵容最多20人。\n通过第七关获胜，N开始新一局。\n返回主菜单可切换街区争夺模式。")},
  {TEXT("Start with 600 CASH and a free boss.\nZ upper / X middle / C lower lane.\n[2] Runner 80: fast gold courier\n[3] Knife 120: counters Thrower\n[4] Pipe 180: counters Knife\n[5] Thrower 220: counters Pipe\n[6] Box 130: public odds and guarantee\nPlace units near your base. SPACE starts."),TEXT("初始600现金及一名老大。\nZ上路、X中路、C下路。\n2跑腿80：运金；3刀兵120：克制投掷。\n4铁棍180：克制刀兵；5投掷220：克制铁棍。\n6盲盒130：有公开概率及保底。\n在基地附近部署，空格开战。")},
  {TEXT("Overhead: RMB unit / drag selects. SHIFT adds.\nRight-click ground: move, then resume work.\nRight-click enemy: focus attack.\nStreet: LMB selects; RMB ally escorts.\nALT + right-click: force ground move.\nF hold / G auto-follow / B return / V raid\n1 boss / H escort courier\nTAB street / overhead. HOME frames selection.\nStreet RMB drag: look / short click: command\nWASD fly / PgUp PgDn height\nT follows / wheel: fast zoom\nF2: instant initial full map\nLook up + climb above 65m: tactical view"),TEXT("俯视右键点选与拖框，Shift追加。\n右键地面移动、敌人集火、敌方基地进攻。\n街景左键选兵，右键拖动转镜头。\nF守位，G自动跟随，B回基地，V袭击。\n1选老大，H护送，Tab切换视角。\nWASD移动，滚轮缩放，Home聚焦。\nF2全图复位，T跟随目标。")},
  {TEXT("Start: three random gold bags.\nGold convoys: 1:00, 2:10, 3:20.\n30s warning. Clear guards, RMB to open.\nPick up: Runner 0.22s / others 0.42s.\nCarry home; a 1s delivery banks it.\n500 GOLD held 15s / destroy enemy van wins.\n6min limit. 4min final phase, 10s grace.\nThen boss defeat loses / all NPC damage x1.5.\nDiamond convoy at 4:30; bring diamond home.\nRMB vans/hideouts to interact; move to exit.\nRaid enemy vault: clear guards, channel 4s.\nDamage / guards interrupt a raid.\nCash is never stolen or spent as gold.\nXP 60 / 160 promotes a unit.\nP or ESC pauses. N starts a new round."),TEXT("开局三个随机金袋，普通车队有提前预告。\n运金回基地，500黄金守住15秒获胜。\n摧毁敌方基地车也可获胜。\n最长6分钟；4分钟后进入决战。\n宽限10秒后，老大阵亡失败、攻击力提升。\n4分30秒钻石车出现，钻石运回基地获胜。\n右键车辆和藏身点交互，移动离开藏身。\n伤害与护卫会打断抢库。现金与黄金独立。\n经验60/160晋升。ESC暂停，N新一局。")},
@@ -169,7 +171,7 @@ FString UKTWSession::Localize(FString Text)const{
  {TEXT("ACTIVE FOR THIS RUN"),TEXT("本局持续生效")},
  {TEXT("CHOOSE ONE LAW / IT CHANGES THE BATTLE"),TEXT("选择一条法则，改变战局")},
  {TEXT("TAKE THIS RULE"),TEXT("选择此法则")},
- {TEXT("FIVE WAVES CLEARED"),TEXT("五关全部通关")},
+ {TEXT("SEVEN WAVES CLEARED"),TEXT("七关全部通关")},
  {TEXT("THE RUN IS OVER"),TEXT("本局挑战结束")},
  {TEXT("WAVE VICTORY"),TEXT("本关胜利")},
  {TEXT("LEGION LIFE LOST"),TEXT("失去一次军团生命")},
@@ -179,6 +181,7 @@ FString UKTWSession::Localize(FString Text)const{
  {TEXT("MODE SELECT / MAIN MENU"),TEXT("返回主菜单 / 切换模式")},
  {TEXT("DEPLOY NEXT WAVE"),TEXT("进入下一关布阵")},
  {TEXT("FIELD COLLAPSING / RETURN TO THE CENTRE"),TEXT("危险区域收缩，请返回中央")},
+ {TEXT("重装封锁"),TEXT("Armored blockade")},{TEXT("交叉火网"),TEXT("Crossfire")},{TEXT("天台决战"),TEXT("Rooftop showdown")},
  {TEXT("MOON GRAVITY"),TEXT("月球重力")},
  {TEXT("DOUBLE IMPACT"),TEXT("双倍冲击")},
  {TEXT("ICE STREET"),TEXT("冰面街区")},
@@ -239,3 +242,4 @@ FString UKTWSession::Localize(FString Text)const{
 }
 
 void UKTWSession::RunUIProfileTest(){int Fail=0;auto Check=[&](bool OK){Fail+=!OK;};bool Old=English;English=false;Check(Localize(TEXT("GOLD"))==TEXT("金币"));English=true;Check(Localize(TEXT("枪手"))==TEXT("Gunner"));Check(Localize(TEXT("RULE RUN / 法则挑战"))==TEXT("RULE RUN"));ProfileOverride=FPaths::ProjectSavedDir()/TEXT("Tests/UIProfile.ini");IFileManager::Get().MakeDirectory(*(FPaths::ProjectSavedDir()/TEXT("Tests")),true);Achievements.Empty();Earn(TEXT("gunner"));SaveProfile();English=false;Achievements.Empty();LoadProfile();Check(English&&Achievements.Contains(TEXT("gunner")));Earn(TEXT("gunner"));Check(Achievements.Num()==1);Action(TEXT("Collection"));Check(Collection);Action(TEXT("CloseCollection"));Check(!Collection);English=Old;ProfileOverride.Empty();LoadProfile();UE_LOG(LogTemp,Display,TEXT("KTW UI PROFILE COMPLETE failures=%d checks=7"),Fail);FPlatformMisc::RequestExitWithStatus(false,Fail?1:0);}
+

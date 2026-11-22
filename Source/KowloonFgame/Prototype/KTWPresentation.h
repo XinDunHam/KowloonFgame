@@ -23,6 +23,7 @@ public:
  void Consume();
  TWeakObjectPtr<AKTWTestUnit> ClaimedBy;
  float ClaimHealth=0;double CollectAt=-1;bool ManualClaim=false;
+ FVector PickupPoint=FVector::ZeroVector;float ClosestClaimDistance=MAX_flt;double ClaimStarted=-1,ClaimProgressAt=-1,RetryAfter=-1;TWeakObjectPtr<AKTWTestUnit> RejectedBy;
 };
 UCLASS() class KOWLOONFGAME_API AKTWCivilian:public ACharacter {
  GENERATED_BODY()
@@ -56,6 +57,7 @@ private:
  float NextRefill=25;
  int32 LootWave=0;
  double NextFootstep=0;
+ TMap<TWeakObjectPtr<AKTWTestUnit>,double> GearSearchAt;
  void Refill();
  void RunTests();
 };
