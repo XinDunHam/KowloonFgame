@@ -1,0 +1,12 @@
+九龙街区 · 双语收藏版（2026-11-22）
+
+请完整解压后，双击本目录 KowloonFgame.exe。
+Engine和KowloonFgame两个文件夹请一起保留。
+不需要安装UE编辑器。
+
+详细攻略：游玩攻略与操作指南.html（浏览器打开，带截图）
+纯文字版：游玩攻略与操作指南.txt
+主菜单右上角可切换中文/EN及查看成就收藏。
+
+本包不包含开发者测试存档、日志或调试符号。
+已有语言与成就进度可迁移 KowloonFgame/Saved/PlayerProfile.json。

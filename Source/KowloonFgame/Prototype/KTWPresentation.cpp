@@ -1,0 +1,96 @@
+#include "KTWPresentation.h"
+#include "Sound/SoundBase.h"
+#include "Engine/DamageEvents.h"
+#include "KTWPrototype.h"
+#include "KTWCombatAction.h"
+#include "KTWAI.h"
+#include "KTWGold.h"
+#include "KTWMatch.h"
+#include "KTWSession.h"
+#include "KTWGeneration.h"
+#include "KTWStreetWar.h"
+#include "KTWTactics.h"
+#include "KTWDynamics.h"
+#include "AIController.h"
+#include "EngineUtils.h"
+#include "Components/StaticMeshComponent.h"
+#include "Components/CapsuleComponent.h"
+#include "Components/SkeletalMeshComponent.h"
+#include "GameFramework/CharacterMovementComponent.h"
+#include "Materials/MaterialInterface.h"
+#include "NavigationSystem.h"
+#include "NavigationPath.h"
+#include "TimerManager.h"
+#include "Components/AudioComponent.h"
+#include "Misc/CommandLine.h"
+#include "Kismet/GameplayStatics.h"
+
+AKTWStreetWeapon::AKTWStreetWeapon(){RootComponent=CreateDefaultSubobject<USceneComponent>(TEXT("Root"));SetActorEnableCollision(false);}
+void AKTWStreetWeapon::BuildModel(){
+ for(UStaticMeshComponent* P:Parts)if(P)P->DestroyComponent();Parts.Empty();
+ auto Part=[&](const TCHAR* Mesh,FVector P,FVector Scale,FRotator Rot=FRotator::ZeroRotator){auto* C=NewObject<UStaticMeshComponent>(this);AddInstanceComponent(C);C->SetupAttachment(RootComponent);C->SetStaticMesh(LoadObject<UStaticMesh>(nullptr,Mesh));C->SetRelativeLocation(P);C->SetRelativeScale3D(Scale);C->SetRelativeRotation(Rot);C->SetCollisionEnabled(ECollisionEnabled::NoCollision);C->SetCanEverAffectNavigation(false);C->SetMaterial(0,LoadObject<UMaterialInterface>(nullptr,TEXT("/Game/KTW/Materials/M_Weapon.M_Weapon")));C->RegisterComponent();Parts.Add(C);};
+ const TCHAR* Cube=TEXT("/Engine/BasicShapes/Cube.Cube"),*Cylinder=TEXT("/Engine/BasicShapes/Cylinder.Cylinder");
+ if(!Equipped){Part(Cylinder,FVector(0,0,10),FVector(4.8f,4.8f,.035f));Parts.Last()->SetMaterial(0,LoadObject<UMaterialInterface>(nullptr,TEXT("/Game/KTW/Materials/M_Blue.M_Blue")));}
+ if(Kind==0){Part(Cube,FVector(0,0,25),FVector(2.9f,.24f,.08f));Part(Cylinder,FVector(-180,0,25),FVector(.18f,.18f,.8f),FRotator(0,0,90));}
+ else if(Kind==1)Part(Cylinder,FVector(0,0,30),FVector(.3f,.3f,5.7f),FRotator(0,0,90));
+ else if(Kind==2){Part(Cube,FVector(0,0,240),FVector(2.8f,2.8f,.22f));for(float X:{-100.f,100.f})for(float Y:{-100.f,100.f})Part(Cube,FVector(X,Y,120),FVector(.18f,.18f,2.4f));Part(Cube,FVector(0,115,340),FVector(2.8f,.16f,1.8f));}
+ else if(Kind==3){Part(Cube,FVector(0,0,65),FVector(2.4,1.8,1));Parts.Last()->SetMaterial(0,LoadObject<UMaterialInterface>(nullptr,TEXT("/Game/KTW/Materials/M_SnowWhite.M_SnowWhite")));for(auto Scale:{FVector(1.5,.4,.05),FVector(.4,1.3,.05)}){Part(Cube,FVector(0,0,120),Scale);Parts.Last()->SetMaterial(0,LoadObject<UMaterialInterface>(nullptr,TEXT("/Game/KTW/Materials/M_NeonRed.M_NeonRed")));}}
+ else{Part(Cylinder,FVector(0,0,100),FVector(.75,.75,1.9));Part(Cylinder,FVector(0,0,220),FVector(.28,.28,.6));Part(Cube,FVector(0,0,260),FVector(.8,.15,.1));}
+
+}
+bool AKTWStreetWeapon::Accepts(AKTWTestUnit* U)const{return !Collected&&!IsActorBeingDestroyed()&&U&&U->Health>0&&!U->bCarryingGold&&(Kind==3?U->Health<U->Stats.MaxHealth:Kind==4?true:(U->UnitRole==EKTWRole::Knife||U->UnitRole==EKTWRole::Pipe));}
+void AKTWStreetWeapon::Equip(AKTWTestUnit* U){if(Equipped||!Accepts(U))return;Collected=true;ClaimedBy.Reset();if(Kind==3){U->Health=FMath::Min(U->Stats.MaxHealth,U->Health+60);AKTWCommandMarker::Show(GetWorld(),U->GetActorLocation(),2);UKTWSession::Cue(this,TEXT("Pickup"));Destroy();return;}Equipped=true;SetOwner(U);BuildModel();AttachToComponent(U->GetMesh(),FAttachmentTransformRules::SnapToTargetNotIncludingScale,Kind==4?TEXT("spine_03"):TEXT("hand_r"));SetActorRelativeScale3D(FVector(1.f/U->GetMesh()->GetComponentScale().X));TArray<UStaticMeshComponent*> Meshes;U->GetComponents(Meshes);for(auto* C:Meshes)if(Kind<3&&C->GetFName()==TEXT("HeldWeapon"))C->SetVisibility(false);UKTWSession::Cue(this,TEXT("Pickup"),.7f,GetActorLocation());}
+void AKTWStreetWeapon::Drop(){auto* U=Cast<AKTWTestUnit>(GetOwner());if(U){TArray<UStaticMeshComponent*> Meshes;U->GetComponents(Meshes);for(auto* C:Meshes)if(Kind<3&&C->GetFName()==TEXT("HeldWeapon"))C->SetVisibility(true);}if(Collected){Equipped=false;SetActorHiddenInGame(true);Destroy();return;}const FVector Here=GetActorLocation();DetachFromActor(FDetachmentTransformRules::KeepWorldTransform);SetActorScale3D(FVector::OneVector);SetOwner(nullptr);Equipped=false;SetActorHiddenInGame(false);BuildModel();auto* NS=FNavigationSystem::GetCurrent<UNavigationSystemV1>(GetWorld());FNavLocation P;if(NS&&NS->ProjectPointToNavigation(Here,P,FVector(250,250,2000)))SetActorLocation(P.Location+FVector(0,0,10));else SetActorLocation(AKTWStreetDirector::GoldAnchors()[FMath::Clamp(Lane,0,2)*2]);SetActorRotation(FRotator::ZeroRotator);}
+void AKTWStreetWeapon::Consume(){if(!Equipped||Hits<=0)return;if(--Hits<=0){Drop();Destroy();}}
+AKTWCivilian::AKTWCivilian(){PrimaryActorTick.bCanEverTick=true;PrimaryActorTick.TickInterval=.5f;AutoPossessAI=EAutoPossessAI::PlacedInWorldOrSpawned;AIControllerClass=AAIController::StaticClass();GetCapsuleComponent()->InitCapsuleSize(28,88);GetCapsuleComponent()->SetCollisionResponseToChannel(ECC_Pawn,ECR_Ignore);GetCapsuleComponent()->SetCollisionResponseToChannel(ECC_Visibility,ECR_Ignore);GetCapsuleComponent()->SetCanEverAffectNavigation(false);GetCharacterMovement()->bUseRVOAvoidance=false;GetCharacterMovement()->bOrientRotationToMovement=true;GetCharacterMovement()->MaxWalkSpeed=220;}
+void AKTWCivilian::BeginPlay(){Super::BeginPlay();if(auto* V=LoadObject<UKTWCharacterVisuals>(nullptr,TEXT("/Game/KTW/Characters/DA_CharacterVisuals_V4.DA_CharacterVisuals_V4"))){GetMesh()->SetSkeletalMeshAsset(V->SoldierMesh.LoadSynchronous());GetMesh()->SetAnimInstanceClass(V->AnimationClass.LoadSynchronous());GetMesh()->SetRelativeLocation(FVector(0,0,-88));GetMesh()->SetRelativeRotation(V->MeshRotation);GetMesh()->SetRelativeScale3D(FVector(5));GetMesh()->SetCollisionEnabled(ECollisionEnabled::NoCollision);GetMesh()->SetCanEverAffectNavigation(false);auto* M=LoadObject<UMaterialInterface>(nullptr,TEXT("/Engine/BasicShapes/BasicShapeMaterial.BasicShapeMaterial"));for(int32 I=0;I<GetMesh()->GetNumMaterials();++I)GetMesh()->SetMaterial(I,M);}}
+void AKTWCivilian::Tick(float D){
+ Super::Tick(D);auto* M=AKTWMatch::Find(GetWorld());auto* AI=Cast<AAIController>(GetController());if(!M||!AI)return;
+ if(M->Phase==EKTWMatchPhase::Finished){Destroy();return;}
+ const double Now=GetWorld()->GetTimeSeconds();
+ if(M->CanAct()){
+  if(EvacuateAt<0){EvacuateAt=Now;Panicked=true;GetCharacterMovement()->MaxWalkSpeed=1000;SetLifeSpan(10);NextGoal=0;}
+  if(Now<NextGoal)return;NextGoal=Now+1;
+  FVector Best;float Score=MAX_flt;auto* NS=FNavigationSystem::GetCurrent<UNavigationSystemV1>(GetWorld());if(!NS)return;
+  for(FVector Exit:AKTWStreetDirector::GoldAnchors()){FNavLocation P;Exit.Z=100;if(!NS->ProjectPointToNavigation(Exit,P,FVector(250,250,300)))continue;auto* Path=NS->FindPathToLocationSynchronously(GetWorld(),GetActorLocation(),P.Location,this);if(Path&&Path->IsValid()&&!Path->IsPartial()&&Path->GetPathLength()<Score){Best=P.Location;Score=Path->GetPathLength();}}
+  if(Score<170&&Now-EvacuateAt>1){Destroy();return;}if(Score<MAX_flt)AI->MoveToLocation(Best,90,false,true,true,false,nullptr,false);return;
+ }
+ if(Now<NextGoal)return;NextGoal=Now+4;auto* NS=FNavigationSystem::GetCurrent<UNavigationSystemV1>(GetWorld());FNavLocation P;
+ if(NS&&NS->GetRandomReachablePointInRadius(GetActorLocation(),600,P)&&AKTWStreetDirector::IsRoadPosition(P.Location,-70))AI->MoveToLocation(P.Location,70,false,true,true,false,nullptr,false);
+}
+AKTWStreetLife::AKTWStreetLife(){PrimaryActorTick.bCanEverTick=true;PrimaryActorTick.TickInterval=.25f;}
+AKTWStreetLife* AKTWStreetLife::Find(const UWorld* W){if(W)for(TActorIterator<AKTWStreetLife>I(W);I;++I)return *I;return nullptr;}
+void AKTWStreetLife::BeginPlay(){Super::BeginPlay();Refill();const auto Points=AKTWStreetDirector::GoldAnchors();for(int32 I=0;I<8;++I)GetWorld()->SpawnActor<AKTWCivilian>(Points[I%6]+FVector(I>=6?250:-250,0,90),FRotator::ZeroRotator);
+ if(!FParse::Param(FCommandLine::Get(),TEXT("nosound")))if(auto* Sound=LoadObject<USoundBase>(nullptr,TEXT("/Game/KTW/Audio/S_Ambience.S_Ambience"))){auto* A=UGameplayStatics::SpawnSound2D(GetWorld(),Sound,.12f);if(auto* S=UKTWSession::Get(this)){S->Ambience=A;if(A)A->SetPaused(!S->SoundEnabled);}}
+#if !UE_BUILD_SHIPPING
+ if(FParse::Param(FCommandLine::Get(),TEXT("KTWPresentationTest"))){FTimerHandle T;GetWorldTimerManager().SetTimer(T,this,&AKTWStreetLife::RunTests,3.f,false);}
+#endif
+}
+void AKTWStreetLife::Refill(){
+ if(UKTWSession::Diagnostic()){AKTWStreetDirector* Director=nullptr;for(TActorIterator<AKTWStreetDirector>I(GetWorld());I;++I){Director=*I;break;}if(!Director)return;if(!UKTWSession::Diagnostic())if(auto* S=UKTWSession::Get(this))Director->MapSeed=S->RoundSeed;const auto Placements=Director->BuildLayer(EKTWLayer::Weapons,Director->MapSeed+int32(NextRefill/60-1)*104729);for(int32 L=0;L<3;++L){int32 Count=0;for(AKTWStreetWeapon* W:GroundWeapons)if(IsValid(W)&&!W->Equipped&&W->Lane==L)++Count;for(const auto& P:Placements)if(P.Lane==L&&Count<2){bool Occupied=false;for(AKTWStreetWeapon* W:GroundWeapons)if(IsValid(W)&&!W->Equipped&&FVector::Dist2D(W->GetActorLocation(),P.Transform.GetLocation())<180)Occupied=true;if(Occupied)continue;auto* W=GetWorld()->SpawnActor<AKTWStreetWeapon>(FVector(P.Transform.GetLocation().X,P.Transform.GetLocation().Y,20),P.Transform.Rotator());W->Kind=P.Kind;W->Lane=L;W->Hits=P.Kind==2?3:6;W->BuildModel();GroundWeapons.Add(W);++Count;}}return;}
+ int32 Seed=5990;if(auto* S=UKTWSession::Get(this))Seed=S->RoundSeed;FRandomStream R(int32(HashCombineFast(uint32(Seed),uint32(++LootWave)*104729u)));
+ int32 Count=0;for(AKTWStreetWeapon* W:GroundWeapons)if(IsValid(W)&&!W->Equipped)++Count;const int32 Kinds[]={0,1,2,3,4,3};auto Nodes=AKTWStreetDirector::Junctions();const FIntPoint Edges[]={{0,1},{1,4},{0,2},{2,4},{0,3},{3,4},{1,2},{2,3}};
+ for(int32 Slot=Count;Slot<12;++Slot){FVector P;bool Valid=false;for(int32 Try=0;Try<100&&!Valid;++Try){auto E=Edges[R.RandRange(0,7)];P=FMath::Lerp(Nodes[E.X],Nodes[E.Y],R.FRandRange(.15,.85));const FVector D=(Nodes[E.Y]-Nodes[E.X]).GetSafeNormal2D();P+=FVector(-D.Y,D.X,0)*R.FRandRange(-80,80);P.Z=22;Valid=AKTWStreetDirector::IsRoadPosition(P,-140)&&FVector::Dist2D(P,Nodes[0])>1600&&FVector::Dist2D(P,Nodes[4])>1600;for(AKTWStreetWeapon* W:GroundWeapons)if(IsValid(W)&&!W->Equipped&&FVector::Dist2D(W->GetActorLocation(),P)<480)Valid=false;}
+  if(!Valid)continue;auto* W=GetWorld()->SpawnActor<AKTWStreetWeapon>(P,FRotator(0,R.FRandRange(0,360),0));if(!W)continue;W->Kind=Kinds[Slot%6];W->Lane=-1;W->Hits=W->Kind==2?3:W->Kind>=3?1:6;W->BuildModel();GroundWeapons.Add(W);
+ }
+}
+void AKTWStreetLife::Tick(float D){Super::Tick(D);auto* M=AKTWMatch::Find(GetWorld());if(!M||!M->CanAct())return;GroundWeapons.RemoveAll([](const auto& W){return !IsValid(W);});for(AKTWStreetWeapon* W:GroundWeapons)if(IsValid(W)){if(W->Equipped){auto* U=Cast<AKTWTestUnit>(W->GetOwner());if(!U||U->Health<=0)W->Drop();}else if(W->ClaimedBy.IsValid())ProcessGear(W);}for(TActorIterator<AKTWTestUnit>I(GetWorld());I;++I)if(I->Health>0&&!AKTWStreetWar::Busy(*I))TryWeapon(*I);if(M->BattleSeconds>=NextRefill){NextRefill+=25;Refill();}}
+AKTWStreetWeapon* AKTWStreetLife::Equipment(AKTWTestUnit* U)const{for(AKTWStreetWeapon* W:GroundWeapons)if(IsValid(W)&&W->Kind<3&&W->Equipped&&W->GetOwner()==U)return W;return nullptr;}
+AKTWStreetWeapon* AKTWStreetLife::Throwable(AKTWTestUnit* U)const{for(AKTWStreetWeapon* W:GroundWeapons)if(IsValid(W)&&W->Kind==4&&W->Equipped&&W->GetOwner()==U)return W;return nullptr;}
+bool AKTWStreetLife::Busy(AKTWTestUnit* U)const{for(AKTWStreetWeapon* W:GroundWeapons)if(IsValid(W)&&!W->Equipped&&W->ClaimedBy.Get()==U)return true;return false;}
+void AKTWStreetLife::CancelGear(AKTWStreetWeapon* W){if(!W)return;if(auto* U=W->ClaimedBy.Get()){if(auto* A=U->FindComponentByClass<UKTWCombatAction>())A->CancelInteraction();if(U->Order==EKTWUnitOrder::PickupGear&&U->CommandTarget()==W)U->IssueOrder(EKTWUnitOrder::Advance,U->GetActorLocation());}W->ClaimedBy.Reset();W->CollectAt=-1;}
+bool AKTWStreetLife::RequestGear(AKTWTestUnit* U,AKTWStreetWeapon* W,bool Manual){auto* M=AKTWMatch::Find(GetWorld());if(!M||!M->CanAct()||!U||!IsValid(W)||W->Equipped||!W->Accepts(U)||(W->ClaimedBy.IsValid()&&W->ClaimedBy.Get()!=U))return false;if(W->Kind==4&&Throwable(U))return false;if(W->Kind<3&&Equipment(U)&&(!Manual||Equipment(U)->Multiplier()>=W->Multiplier()))return false;FVector Point;if(!FKTWTactics::ProjectOrder(U,W->GetActorLocation(),U->Faction,Point))return false;if(Busy(U))for(AKTWStreetWeapon* Other:GroundWeapons)if(IsValid(Other)&&Other!=W&&Other->ClaimedBy.Get()==U)CancelGear(Other);W->ClaimedBy=U;W->ClaimHealth=U->Health;W->CollectAt=-1;W->ManualClaim=Manual;return true;}
+void AKTWStreetLife::ProcessGear(AKTWStreetWeapon* W){auto* U=W->ClaimedBy.Get();if(U&&!W->ManualClaim&&U->bEnableCombat&&FKTWTactics::FindEnemy(U,U->Faction,1400)){CancelGear(W);return;}auto* G=AKTWGoldSystem::Find(GetWorld());if(!U||!W->Accepts(U)||U->Health<W->ClaimHealth||(W->ManualClaim?(U->Order!=EKTWUnitOrder::PickupGear||U->CommandTarget()!=W):(U->Order!=EKTWUnitOrder::Advance&&U->Order!=EKTWUnitOrder::Defend))||!G||!G->IsSafe(U->GetActorLocation(),U->Faction)){CancelGear(W);return;}
+ if(FVector::Dist2D(U->GetActorLocation(),W->GetActorLocation())>120){FKTWTactics::Move(U,W->GetActorLocation(),U->Faction,65);return;}if(auto* AI=Cast<AAIController>(U->GetController()))AI->StopMovement();const double Now=GetWorld()->GetTimeSeconds();if(W->CollectAt<0){auto* A=U->FindComponentByClass<UKTWCombatAction>();if(A&&A->bPlaying)return;if(A&&!A->PlayPickup(.6f))return;W->CollectAt=Now+.6;W->ClaimHealth=U->Health;return;}if(Now<W->CollectAt)return;const bool Manual=W->ManualClaim;W->ClaimedBy.Reset();W->CollectAt=-1;if(auto* A=U->FindComponentByClass<UKTWCombatAction>())A->CancelInteraction();if(W->Kind<3)if(auto* Old=Equipment(U))Old->Drop();W->Equip(U);if(U->Faction==0)if(auto* M=AKTWMatch::Find(GetWorld()))M->Feedback=W->Kind==3?TEXT("MEDKIT used: +60 HP, capped at max health."):W->Kind==4?TEXT("MOLOTOV ready: one automatic throw when engaging an enemy."):FString::Printf(TEXT("WEAPON equipped: +%.0f%% damage, %d durability."),(W->Multiplier()-1)*100,W->Hits);if(Manual&&U->Order==EKTWUnitOrder::PickupGear)U->IssueOrder(EKTWUnitOrder::Defend,U->GetActorLocation());
+}
+bool AKTWStreetLife::TryWeapon(AKTWTestUnit* U){if(!U||U->bCarryingGold||(U->Order!=EKTWUnitOrder::Advance&&U->Order!=EKTWUnitOrder::Defend)||U->bLaneDeparturePending)return false;if(Busy(U))return true;if(auto* A=U->FindComponentByClass<UKTWCombatAction>())if(A->bPlaying)return false;if(auto* C=U->FindComponentByClass<UKTWGoldCarrier>())if(C->Carried>0||C->Task==EKTWGoldTask::PickingUp||C->Task==EKTWGoldTask::Delivering)return false;auto* G=AKTWGoldSystem::Find(GetWorld());if(!G||!G->IsSafe(U->GetActorLocation(),U->Faction))return false;AKTWStreetWeapon* Best=nullptr;float Score=550;
+ for(AKTWStreetWeapon* W:GroundWeapons)if(IsValid(W)&&!W->Equipped&&W->Accepts(U)&&!W->ClaimedBy.IsValid()){if((W->Kind<3&&Equipment(U))||(W->Kind==4&&Throwable(U)))continue;const float V=FVector::Dist2D(U->GetActorLocation(),W->GetActorLocation())*(W->Kind==3?.6f:1.f);if(V<Score){Score=V;Best=W;}}
+ if(!Best)return false;auto* NS=FNavigationSystem::GetCurrent<UNavigationSystemV1>(GetWorld());auto* Path=NS?NS->FindPathToLocationSynchronously(GetWorld(),U->GetActorLocation(),Best->GetActorLocation(),U,FKTWTactics::Filter(U->Faction)):nullptr;if(!Path||!Path->IsValid()||Path->IsPartial()||Path->GetPathLength()>900)return false;return RequestGear(U,Best,false);
+}
+void AKTWStreetLife::Dress(ACharacter* U,bool Boss){if(!U||!U->GetMesh())return;auto* C=NewObject<UStaticMeshComponent>(U);U->AddInstanceComponent(C);C->SetupAttachment(U->GetMesh(),Boss?TEXT("head"):TEXT("spine_03"));C->SetStaticMesh(LoadObject<UStaticMesh>(nullptr,Boss?TEXT("/Engine/BasicShapes/Cylinder.Cylinder"):TEXT("/Engine/BasicShapes/Cube.Cube")));C->SetRelativeScale3D(Boss?FVector(.24f,.24f,.09f):FVector(.24f,.16f,.29f));C->SetRelativeLocation(Boss?FVector(6,0,0):FVector(-6,0,0));C->SetCollisionEnabled(ECollisionEnabled::NoCollision);C->SetCanEverAffectNavigation(false);C->SetMaterial(0,LoadObject<UMaterialInterface>(nullptr,Boss?TEXT("/Game/KTW/Materials/M_NeonGold.M_NeonGold"):TEXT("/Game/KTW/Materials/M_Weapon.M_Weapon")));C->RegisterComponent();}
+void AKTWStreetLife::Impact(AActor* Target){if(!Target)return;auto* S=UKTWSession::Get(Target);if(!S||S->Quality<1||UKTWSession::Diagnostic())return;auto* Flash=Target->GetWorld()->SpawnActor<AActor>();auto* C=NewObject<UStaticMeshComponent>(Flash);Flash->SetRootComponent(C);Flash->AddInstanceComponent(C);C->SetStaticMesh(LoadObject<UStaticMesh>(nullptr,TEXT("/Engine/BasicShapes/Sphere.Sphere")));C->SetCollisionEnabled(ECollisionEnabled::NoCollision);C->SetCanEverAffectNavigation(false);C->SetMaterial(0,LoadObject<UMaterialInterface>(nullptr,TEXT("/Game/KTW/Materials/M_NeonGold.M_NeonGold")));C->RegisterComponent();Flash->SetActorLocation(Target->GetActorLocation()+FVector(0,0,350));Flash->SetActorScale3D(FVector(1.4f,1.4f,.12f));Flash->SetLifeSpan(.12f);}
+void AKTWStreetLife::RunTests(){
+#if !UE_BUILD_SHIPPING
+ int32 Fail=0;auto Check=[&](bool OK,const TCHAR* N){Fail+=!OK;UE_LOG(LogTemp,Display,TEXT("KTW PRESENTATION %s: %s"),N,OK?TEXT("PASS"):TEXT("FAIL"));};Check(GroundWeapons.Num()==6,TEXT("six mirrored initial street weapons"));int32 Civ=0;for(TActorIterator<AKTWCivilian>I(GetWorld());I;++I){++Civ;FDamageEvent E;Check(I->TakeDamage(100,E,nullptr,nullptr)==0,TEXT("civilian cannot take damage"));}Check(Civ==8,TEXT("eight nonblocking civilians"));auto* M=AKTWMatch::Find(GetWorld());M->StartBattle();auto* W=GroundWeapons[0].Get();auto* U=GetWorld()->SpawnActorDeferred<AKTWTestUnit>(AKTWTestUnit::StaticClass(),FTransform(W->GetActorLocation()+FVector(0,0,100)));U->UnitRole=W->Kind==1?EKTWRole::Pipe:EKTWRole::Knife;U->bEnableCombat=false;U->FinishSpawning(FTransform(W->GetActorLocation()+FVector(0,0,100)));W->Equip(U);Check(W->Equipped&&Equipment(U)==W,TEXT("compatible unit equips once"));const int32 Initial=W->Hits;W->Consume();Check(W->Hits==Initial-1,TEXT("one actual hit uses one durability"));W->Drop();Check(W->Collected&&W->IsActorBeingDestroyed()&&!Equipment(U),TEXT("collected equipment never returns as reusable ground loot"));auto* Fresh=GetWorld()->SpawnActor<AKTWStreetWeapon>(U->GetActorLocation(),FRotator::ZeroRotator);Fresh->Kind=0;Check(Fresh->Accepts(U),TEXT("fresh compatible pickup remains available"));U->bCarryingGold=true;Check(!Fresh->Accepts(U),TEXT("gold transport cannot be displaced by weapon"));Check(M->CashConserved(),TEXT("street life never changes cash"));UE_LOG(LogTemp,Display,TEXT("KTW PRESENTATION COMPLETE failures=%d"),Fail);FPlatformMisc::RequestExitWithStatus(false,Fail?1:0);
+#endif
+}
