@@ -1,4 +1,4 @@
-param([string]$EngineRoot='D:\UE\UE_5.8',[string]$Release='V0.15')
+﻿param([string]$EngineRoot='D:\UE\UE_5.8',[string]$Release='V0.15')
 $ErrorActionPreference='Stop'
 $projectRoot=Split-Path $PSScriptRoot -Parent
 $projectFile=Join-Path $projectRoot 'KowloonFgame.uproject'
